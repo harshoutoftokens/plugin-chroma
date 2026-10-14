@@ -1,0 +1,155 @@
+package io.kestra.plugin.chroma;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.runners.RunContext;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@SuperBuilder
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+@Schema(
+    title = "Delete records from a Chroma collection",
+    description = "Deletes records by their ids and/or by a metadata (`where`) or document (`whereDocument`) filter. "
+        + "At least one of `ids`, `where` or `whereDocument` must be provided."
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Delete specific records by id",
+            full = true,
+            code = """
+                id: chroma_delete_by_id
+                namespace: company.team
+
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.chroma.Delete
+                    baseUrl: http://localhost:8000
+                    collectionName: docs
+                    ids: ["doc-1", "doc-2"]
+                """
+        ),
+        @Example(
+            title = "Delete records matching a metadata filter",
+            full = true,
+            code = """
+                id: chroma_delete_by_filter
+                namespace: company.team
+
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.chroma.Delete
+                    baseUrl: http://localhost:8000
+                    collectionName: docs
+                    where:
+                      source: handbook
+                """
+        )
+    }
+)
+public class Delete extends ChromaConnection implements RunnableTask<Delete.Output> {
+
+    @Schema(
+        title = "Collection name",
+        description = "The name of the collection to delete from."
+    )
+    @NotNull
+    @PluginProperty(group = "main")
+    private Property<String> collectionName;
+
+    @Schema(
+        title = "Record ids",
+        description = "Ids of the records to delete."
+    )
+    @PluginProperty(group = "main")
+    private Property<List<Object>> ids;
+
+    @Schema(
+        title = "Metadata filter",
+        description = "A Chroma `where` filter selecting records to delete by metadata."
+    )
+    @PluginProperty(group = "main")
+    private Property<Map<String, Object>> where;
+
+    @Schema(
+        title = "Document filter",
+        description = "A Chroma `where_document` filter selecting records to delete by document text."
+    )
+    @PluginProperty(group = "main")
+    private Property<Map<String, Object>> whereDocument;
+
+    @Override
+    public Output run(RunContext runContext) throws Exception {
+        String rCollectionName = runContext.render(this.collectionName).as(String.class)
+            .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
+        List<Object> rIds = this.ids == null ? null : runContext.render(this.ids).asList(Object.class);
+        Map<String, Object> rWhere = this.where == null
+            ? null
+            : runContext.render(this.where).asMap(String.class, Object.class);
+        Map<String, Object> rWhereDocument = this.whereDocument == null
+            ? null
+            : runContext.render(this.whereDocument).asMap(String.class, Object.class);
+
+        boolean hasIds = rIds != null && !rIds.isEmpty();
+        boolean hasWhere = rWhere != null && !rWhere.isEmpty();
+        boolean hasWhereDocument = rWhereDocument != null && !rWhereDocument.isEmpty();
+        if (!hasIds && !hasWhere && !hasWhereDocument) {
+            throw new IllegalArgumentException("At least one of 'ids', 'where' or 'whereDocument' must be provided.");
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (hasIds) {
+            body.put("ids", rIds.stream().map(Object::toString).toList());
+        }
+        if (hasWhere) {
+            body.put("where", rWhere);
+        }
+        if (hasWhereDocument) {
+            body.put("where_document", rWhereDocument);
+        }
+
+        try (ApiClient api = api(runContext)) {
+            String collectionId = api.resolveCollectionId(rCollectionName);
+            runContext.logger().info("Deleting records from collection '{}'", rCollectionName);
+            api.request("POST", api.recordPath(collectionId, "delete"), body);
+
+            return Output.builder()
+                .deletedCount(hasIds ? (long) rIds.size() : null)
+                .success(true)
+                .build();
+        }
+    }
+
+    @Builder
+    @Getter
+    public static class Output implements io.kestra.core.models.tasks.Output {
+        @Schema(
+            title = "Deleted count",
+            description = "The number of ids targeted for deletion (only available when deleting by `ids`)."
+        )
+        private final Long deletedCount;
+
+        @Schema(
+            title = "Success",
+            description = "Whether the delete request was accepted by Chroma."
+        )
+        private final Boolean success;
+    }
+}
