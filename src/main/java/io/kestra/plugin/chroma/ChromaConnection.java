@@ -7,6 +7,7 @@ import io.kestra.core.http.HttpRequest;
 import io.kestra.core.http.HttpResponse;
 import io.kestra.core.http.client.HttpClient;
 import io.kestra.core.http.client.configurations.HttpConfiguration;
+import io.kestra.core.http.client.configurations.TimeoutConfiguration;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
@@ -24,15 +25,14 @@ import lombok.experimental.SuperBuilder;
 
 import java.io.BufferedOutputStream;
 import java.io.Closeable;
-import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -90,6 +90,10 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
             throw new IllegalArgumentException(
                 "Basic authentication requires both 'username' and 'password', but only one was set.");
         }
+        if (hasToken && (hasUsername || hasPassword)) {
+            throw new IllegalArgumentException(
+                "Provide either 'authToken' or 'username'/'password', not both.");
+        }
 
         String authHeaderName = null;
         String authHeaderValue = null;
@@ -106,6 +110,10 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
             runContext,
             HttpConfiguration.builder()
                 .allowFailed(Property.ofValue(true))
+                .timeout(TimeoutConfiguration.builder()
+                    .connectTimeout(Property.ofValue(Duration.ofSeconds(10)))
+                    .readIdleTimeout(Property.ofValue(Duration.ofSeconds(60)))
+                    .build())
                 .build()
         );
 
@@ -163,7 +171,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
 
         // Sends the request and returns the parsed JSON body, or null if the response is empty.
         public JsonNode request(String method, String path, Object body) throws IOException {
-            HttpRequest.HttpRequestBuilder builder = HttpRequest.builder()
+            var builder = HttpRequest.builder()
                 .uri(URI.create(this.baseUrl + path))
                 .method(method);
 
@@ -183,7 +191,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
             try {
                 this.httpClient.request(builder.build(), (HttpResponse<InputStream> response) -> {
                     result.code = response.getStatus().getCode();
-                    try (InputStream content = response.getBody()) {
+                    try (var content = response.getBody()) {
                         if (content == null) {
                             return;
                         }
@@ -240,14 +248,14 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
         List<T> items,
         Function<T, Map<String, Object>> mapper
     ) throws IOException {
-        FetchOutput.FetchOutputBuilder builder = FetchOutput.builder();
+        var builder = FetchOutput.builder();
         return switch (fetchType) {
             case FETCH_ONE -> builder
                 .size(items.isEmpty() ? 0L : 1L)
                 .row(items.isEmpty() ? null : mapper.apply(items.getFirst()))
                 .build();
             case FETCH -> {
-                List<Object> rows = new ArrayList<>(items.size());
+                var rows = new ArrayList<>(items.size());
                 for (T item : items) {
                     rows.add(mapper.apply(item));
                 }
@@ -257,8 +265,8 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
                     .build();
             }
             case STORE -> {
-                File tempFile = runContext.workingDir().createTempFile(".ion").toFile();
-                try (OutputStream output = new BufferedOutputStream(new FileOutputStream(tempFile))) {
+                var tempFile = runContext.workingDir().createTempFile(".ion").toFile();
+                try (var output = new BufferedOutputStream(new FileOutputStream(tempFile))) {
                     for (T item : items) {
                         FileSerde.write(output, mapper.apply(item));
                     }

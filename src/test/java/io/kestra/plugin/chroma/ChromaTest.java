@@ -12,12 +12,9 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 
-/**
- * Base for Chroma integration tests. Starts a real Chroma server in a container.
- * Tests are skipped automatically when Docker is not available.
- */
+// Base for Chroma integration tests; starts a real Chroma server in a container, so Docker is required.
 @KestraTest
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 public abstract class ChromaTest {
 
     protected static final int CHROMA_PORT = 8000;

@@ -22,9 +22,7 @@ public enum Distance {
         this.space = space;
     }
 
-    /**
-     * @return the value Chroma expects in `configuration.hnsw.space`.
-     */
+    // The value Chroma expects in `configuration.hnsw.space`.
     public String space() {
         return this.space;
     }

@@ -102,15 +102,15 @@ public class CreateCollection extends ChromaConnection implements RunnableTask<C
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String rCollectionName = runContext.render(this.collectionName).as(String.class)
+        var rCollectionName = runContext.render(this.collectionName).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
-        Distance rDistance = runContext.render(this.distance).as(Distance.class).orElse(null);
-        boolean rGetOrCreate = runContext.render(this.getOrCreate).as(Boolean.class).orElse(true);
-        Map<String, Object> rMetadata = this.metadata == null
+        var rDistance = runContext.render(this.distance).as(Distance.class).orElse(null);
+        var rGetOrCreate = runContext.render(this.getOrCreate).as(Boolean.class).orElse(true);
+        var rMetadata = this.metadata == null
             ? null
             : runContext.render(this.metadata).asMap(String.class, Object.class);
 
-        Map<String, Object> body = new LinkedHashMap<>();
+        var body = new LinkedHashMap<String, Object>();
         body.put("name", rCollectionName);
         body.put("get_or_create", rGetOrCreate);
         if (rMetadata != null && !rMetadata.isEmpty()) {
@@ -120,11 +120,11 @@ public class CreateCollection extends ChromaConnection implements RunnableTask<C
             body.put("configuration", Map.of("hnsw", Map.of("space", rDistance.space())));
         }
 
-        try (ApiClient api = api(runContext)) {
+        try (var api = api(runContext)) {
             runContext.logger().info("Creating Chroma collection '{}'", rCollectionName);
-            JsonNode created = api.request("POST", api.collectionsPath(), body);
+            var created = api.request("POST", api.collectionsPath(), body);
 
-            String collectionId = created != null && created.get("id") != null ? created.get("id").asText() : null;
+            var collectionId = created != null && created.get("id") != null ? created.get("id").asText() : null;
 
             return Output.builder()
                 .collectionName(rCollectionName)

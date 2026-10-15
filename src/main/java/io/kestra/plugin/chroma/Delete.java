@@ -97,24 +97,24 @@ public class Delete extends ChromaConnection implements RunnableTask<Delete.Outp
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String rCollectionName = runContext.render(this.collectionName).as(String.class)
+        var rCollectionName = runContext.render(this.collectionName).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
-        List<Object> rIds = this.ids == null ? null : runContext.render(this.ids).asList(Object.class);
-        Map<String, Object> rWhere = this.where == null
+        var rIds = this.ids == null ? null : runContext.render(this.ids).asList(Object.class);
+        var rWhere = this.where == null
             ? null
             : runContext.render(this.where).asMap(String.class, Object.class);
-        Map<String, Object> rWhereDocument = this.whereDocument == null
+        var rWhereDocument = this.whereDocument == null
             ? null
             : runContext.render(this.whereDocument).asMap(String.class, Object.class);
 
-        boolean hasIds = rIds != null && !rIds.isEmpty();
-        boolean hasWhere = rWhere != null && !rWhere.isEmpty();
-        boolean hasWhereDocument = rWhereDocument != null && !rWhereDocument.isEmpty();
+        var hasIds = rIds != null && !rIds.isEmpty();
+        var hasWhere = rWhere != null && !rWhere.isEmpty();
+        var hasWhereDocument = rWhereDocument != null && !rWhereDocument.isEmpty();
         if (!hasIds && !hasWhere && !hasWhereDocument) {
             throw new IllegalArgumentException("At least one of 'ids', 'where' or 'whereDocument' must be provided.");
         }
 
-        Map<String, Object> body = new LinkedHashMap<>();
+        var body = new LinkedHashMap<String, Object>();
         if (hasIds) {
             body.put("ids", rIds.stream().map(Object::toString).toList());
         }
@@ -125,8 +125,8 @@ public class Delete extends ChromaConnection implements RunnableTask<Delete.Outp
             body.put("where_document", rWhereDocument);
         }
 
-        try (ApiClient api = api(runContext)) {
-            String collectionId = api.resolveCollectionId(rCollectionName);
+        try (var api = api(runContext)) {
+            var collectionId = api.resolveCollectionId(rCollectionName);
             runContext.logger().info("Deleting records from collection '{}'", rCollectionName);
             api.request("POST", api.recordPath(collectionId, "delete"), body);
 

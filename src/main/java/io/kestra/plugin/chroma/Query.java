@@ -10,6 +10,8 @@ import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -78,11 +80,11 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
 
     @Schema(
         title = "Number of results",
-        description = "Maximum number of nearest records to return (default: 10, min: 1)."
+        description = "Maximum number of nearest records to return (default: 10, min: 1, max: 10000)."
     )
     @Builder.Default
     @PluginProperty(group = "processing")
-    private Property<Integer> nResults = Property.ofValue(10);
+    private Property<@Min(1) @Max(10000) Integer> nResults = Property.ofValue(10);
 
     @Schema(
         title = "Metadata filter",
@@ -118,28 +120,25 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        String rCollectionName = runContext.render(this.collectionName).as(String.class)
+        var rCollectionName = runContext.render(this.collectionName).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
-        List<Object> rVector = runContext.render(this.vector).asList(Object.class);
+        var rVector = runContext.render(this.vector).asList(Object.class);
         if (rVector.isEmpty()) {
             throw new IllegalArgumentException("'vector' must be a non-empty list of numbers.");
         }
         int rNResults = runContext.render(this.nResults).as(Integer.class).orElse(10);
-        if (rNResults < 1) {
-            throw new IllegalArgumentException("'nResults' must be at least 1, got: " + rNResults);
-        }
-        FetchType rFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.STORE);
-        List<String> rInclude = this.include == null
+        var rFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.STORE);
+        var rInclude = this.include == null
             ? DEFAULT_INCLUDE
             : runContext.render(this.include).asList(String.class);
-        Map<String, Object> rWhere = this.where == null
+        var rWhere = this.where == null
             ? null
             : runContext.render(this.where).asMap(String.class, Object.class);
-        Map<String, Object> rWhereDocument = this.whereDocument == null
+        var rWhereDocument = this.whereDocument == null
             ? null
             : runContext.render(this.whereDocument).asMap(String.class, Object.class);
 
-        Map<String, Object> body = new LinkedHashMap<>();
+        var body = new LinkedHashMap<String, Object>();
         body.put("query_embeddings", List.of(rVector));
         body.put("n_results", rNResults);
         body.put("include", rInclude);
@@ -150,36 +149,36 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
             body.put("where_document", rWhereDocument);
         }
 
-        try (ApiClient api = api(runContext)) {
-            String collectionId = api.resolveCollectionId(rCollectionName);
+        try (var api = api(runContext)) {
+            var collectionId = api.resolveCollectionId(rCollectionName);
             runContext.logger().info("Querying collection '{}' for {} nearest records", rCollectionName, rNResults);
-            JsonNode response = api.request("POST", api.recordPath(collectionId, "query"), body);
+            var response = api.request("POST", api.recordPath(collectionId, "query"), body);
 
-            List<Map<String, Object>> rows = toRows(response);
+            var rows = toRows(response);
             return buildFetchOutput(runContext, rFetchType, rows);
         }
     }
 
     private static List<Map<String, Object>> toRows(JsonNode response) {
-        List<Map<String, Object>> rows = new ArrayList<>();
+        var rows = new ArrayList<Map<String, Object>>();
         if (response == null) {
             return rows;
         }
-        JsonNode ids = response.get("ids");
+        var ids = response.get("ids");
         if (ids == null || !ids.isArray()) {
             return rows;
         }
 
         int groups = ids.size();
         for (int g = 0; g < groups; g++) {
-            JsonNode idGroup = ids.get(g);
-            JsonNode distances = group(response, "distances", g);
-            JsonNode documents = group(response, "documents", g);
-            JsonNode metadatas = group(response, "metadatas", g);
-            JsonNode embeddings = group(response, "embeddings", g);
+            var idGroup = ids.get(g);
+            var distances = group(response, "distances", g);
+            var documents = group(response, "documents", g);
+            var metadatas = group(response, "metadatas", g);
+            var embeddings = group(response, "embeddings", g);
 
             for (int j = 0; j < idGroup.size(); j++) {
-                Map<String, Object> row = new LinkedHashMap<>();
+                var row = new LinkedHashMap<String, Object>();
                 if (groups > 1) {
                     row.put("queryIndex", g);
                 }
@@ -195,7 +194,7 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
     }
 
     private static JsonNode group(JsonNode response, String field, int g) {
-        JsonNode node = response.get(field);
+        var node = response.get(field);
         if (node == null || !node.isArray() || g >= node.size() || node.get(g).isNull()) {
             return null;
         }
@@ -206,7 +205,7 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
         if (group == null || j >= group.size() || group.get(j).isNull()) {
             return;
         }
-        JsonNode value = group.get(j);
+        var value = group.get(j);
         if (asDouble) {
             row.put(key, value.asDouble());
         } else {

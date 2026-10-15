@@ -12,7 +12,6 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-// End-to-end lifecycle: create a collection, upsert records, query them, then delete.
 class ChromaLifecycleTest extends ChromaTest {
 
     @Test
@@ -28,12 +27,11 @@ class ChromaLifecycleTest extends ChromaTest {
         assertThat(created.getCollectionName(), is(collectionName));
         assertThat(created.getCollectionId(), not(emptyOrNullString()));
 
-        // 2. Upsert three records
         RunContext upsertCtx = runContextFactory.of();
         Upsert.Output upserted = Upsert.builder()
             .baseUrl(Property.ofValue(baseUrl))
             .collectionName(Property.ofValue(collectionName))
-            .records(List.of(
+            .from(List.of(
                 Map.of("id", "doc-1", "embedding", List.of(0.1, 0.2, 0.3, 0.4),
                     "document", "Berlin is the capital of Germany.", "metadata", Map.of("source", "handbook")),
                 Map.of("id", "doc-2", "embedding", List.of(0.2, 0.1, 0.4, 0.3),

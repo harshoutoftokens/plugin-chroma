@@ -8,6 +8,8 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -45,7 +47,7 @@ import java.util.Map;
                     type: io.kestra.plugin.chroma.Upsert
                     baseUrl: http://localhost:8000
                     collectionName: docs
-                    records:
+                    from:
                       - id: doc-1
                         embedding: [0.05, 0.61, 0.76, 0.74]
                         document: "Berlin is the capital of Germany."
@@ -71,12 +73,12 @@ import java.util.Map;
                     baseUrl: http://localhost:8000
                     collectionName: docs
                     batchSize: 200
-                    records: "{{ outputs.embed.uri }}"
+                    from: "{{ outputs.embed.uri }}"
                 """
         )
     }
 )
-public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Output> {
+public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Output>, Data.From {
 
     @Schema(
         title = "Collection name",
@@ -88,14 +90,14 @@ public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Outp
 
     @Schema(
         title = "Records to upsert",
-        description = "An inline list of record maps, or a Kestra storage URI to an ION/JSON file of them. "
+        description = "An inline list (or single map) of records, or a Kestra storage URI to an ION/JSON file of them. "
             + "Each record must contain an `id` and an `embedding` (a list of numbers; `vector` is accepted as an alias) "
             + "and may contain a `metadata` map and a `document` string.",
-        anyOf = {String.class, List.class}
+        anyOf = {String.class, List.class, Map.class}
     )
     @NotNull
     @PluginProperty(group = "main", dynamic = true)
-    private Object records;
+    private Object from;
 
     @Schema(
         title = "Batch size",
@@ -103,28 +105,25 @@ public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Outp
     )
     @Builder.Default
     @PluginProperty(group = "processing")
-    private Property<Integer> batchSize = Property.ofValue(100);
+    private Property<@Min(1) @Max(10000) Integer> batchSize = Property.ofValue(100);
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String rCollectionName = runContext.render(this.collectionName).as(String.class)
+        var rCollectionName = runContext.render(this.collectionName).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
         int rBatchSize = runContext.render(this.batchSize).as(Integer.class).orElse(100);
-        if (rBatchSize < 1 || rBatchSize > 10000) {
-            throw new IllegalArgumentException("'batchSize' must be between 1 and 10000, got: " + rBatchSize);
-        }
 
-        try (ApiClient api = api(runContext)) {
-            String collectionId = api.resolveCollectionId(rCollectionName);
-            String path = api.recordPath(collectionId, "upsert");
+        try (var api = api(runContext)) {
+            var collectionId = api.resolveCollectionId(rCollectionName);
+            var path = api.recordPath(collectionId, "upsert");
 
             long total = 0;
-            Iterable<List<Map<String, Object>>> batches = Data.from(this.records)
+            var batches = Data.from(this.from)
                 .read(runContext)
                 .buffer(rBatchSize)
                 .toIterable();
 
-            for (List<Map<String, Object>> batch : batches) {
+            for (var batch : batches) {
                 if (batch.isEmpty()) {
                     continue;
                 }
@@ -139,40 +138,40 @@ public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Outp
     }
 
     private static Map<String, Object> toUpsertBody(List<Map<String, Object>> batch) {
-        List<String> ids = new ArrayList<>(batch.size());
-        List<Object> embeddings = new ArrayList<>(batch.size());
-        List<Object> metadatas = new ArrayList<>(batch.size());
-        List<Object> documents = new ArrayList<>(batch.size());
-        boolean anyMetadata = false;
-        boolean anyDocument = false;
+        var ids = new ArrayList<String>(batch.size());
+        var embeddings = new ArrayList<>(batch.size());
+        var metadatas = new ArrayList<>(batch.size());
+        var documents = new ArrayList<>(batch.size());
+        var anyMetadata = false;
+        var anyDocument = false;
 
-        for (Map<String, Object> record : batch) {
-            Object id = record.get("id");
+        for (var record : batch) {
+            var id = record.get("id");
             if (id == null) {
                 throw new IllegalArgumentException("Each record must contain an 'id'. Offending record: " + record);
             }
             ids.add(id.toString());
 
-            Object embedding = record.containsKey("embedding") ? record.get("embedding") : record.get("vector");
+            var embedding = record.containsKey("embedding") ? record.get("embedding") : record.get("vector");
             if (!(embedding instanceof List<?> embeddingList) || embeddingList.isEmpty()) {
                 throw new IllegalArgumentException("Record '" + id + "' must contain a non-empty 'embedding' list of numbers.");
             }
             embeddings.add(embeddingList);
 
-            Object metadata = record.get("metadata");
+            var metadata = record.get("metadata");
             metadatas.add(metadata);
             if (metadata != null) {
                 anyMetadata = true;
             }
 
-            Object document = record.get("document");
+            var document = record.get("document");
             documents.add(document);
             if (document != null) {
                 anyDocument = true;
             }
         }
 
-        Map<String, Object> body = new LinkedHashMap<>();
+        var body = new LinkedHashMap<String, Object>();
         body.put("ids", ids);
         body.put("embeddings", embeddings);
         if (anyMetadata) {
