@@ -112,6 +112,10 @@ public class Upsert extends ChromaConnection implements RunnableTask<Upsert.Outp
         var rCollectionName = runContext.render(this.collectionName).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("'collectionName' is required"));
         int rBatchSize = runContext.render(this.batchSize).as(Integer.class).orElse(100);
+        // The @Min/@Max on the property is enforced by Kestra at flow execution; this keeps a clear message for the rendered value.
+        if (rBatchSize < 1 || rBatchSize > 10000) {
+            throw new IllegalArgumentException("'batchSize' must be between 1 and 10000, but was " + rBatchSize + ".");
+        }
 
         try (var api = api(runContext)) {
             var collectionId = api.resolveCollectionId(rCollectionName);

@@ -50,7 +50,7 @@ import java.util.Map;
                     baseUrl: http://localhost:8000
                     collectionName: docs
                     vector: [0.05, 0.61, 0.76, 0.74]
-                    nResults: 5
+                    maxResults: 5
                     where:
                       source: handbook
                     fetchType: FETCH
@@ -79,12 +79,12 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
     private Property<List<Object>> vector;
 
     @Schema(
-        title = "Number of results",
+        title = "Maximum number of results",
         description = "Maximum number of nearest records to return (default: 10, min: 1, max: 10000)."
     )
     @Builder.Default
     @PluginProperty(group = "processing")
-    private Property<@Min(1) @Max(10000) Integer> nResults = Property.ofValue(10);
+    private Property<@Min(1) @Max(10000) Integer> maxResults = Property.ofValue(10);
 
     @Schema(
         title = "Metadata filter",
@@ -126,7 +126,11 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
         if (rVector.isEmpty()) {
             throw new IllegalArgumentException("'vector' must be a non-empty list of numbers.");
         }
-        int rNResults = runContext.render(this.nResults).as(Integer.class).orElse(10);
+        int rMaxResults = runContext.render(this.maxResults).as(Integer.class).orElse(10);
+        // The @Min/@Max on the property is enforced by Kestra at flow execution; this keeps a clear message for the rendered value.
+        if (rMaxResults < 1 || rMaxResults > 10000) {
+            throw new IllegalArgumentException("'maxResults' must be between 1 and 10000, but was " + rMaxResults + ".");
+        }
         var rFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.STORE);
         var rInclude = this.include == null
             ? DEFAULT_INCLUDE
@@ -140,7 +144,7 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
 
         var body = new LinkedHashMap<String, Object>();
         body.put("query_embeddings", List.of(rVector));
-        body.put("n_results", rNResults);
+        body.put("n_results", rMaxResults);
         body.put("include", rInclude);
         if (rWhere != null && !rWhere.isEmpty()) {
             body.put("where", rWhere);
@@ -151,7 +155,7 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
 
         try (var api = api(runContext)) {
             var collectionId = api.resolveCollectionId(rCollectionName);
-            runContext.logger().info("Querying collection '{}' for {} nearest records", rCollectionName, rNResults);
+            runContext.logger().info("Querying collection '{}' for {} nearest records", rCollectionName, rMaxResults);
             var response = api.request("POST", api.recordPath(collectionId, "query"), body);
 
             var rows = toRows(response);

@@ -49,7 +49,7 @@ class ChromaLifecycleTest extends ChromaTest {
             .baseUrl(Property.ofValue(baseUrl))
             .collectionName(Property.ofValue(collectionName))
             .vector(Property.ofValue(List.of(0.1, 0.2, 0.3, 0.4)))
-            .nResults(Property.ofValue(10))
+            .maxResults(Property.ofValue(10))
             .where(Property.ofValue(Map.of("source", "handbook")))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
@@ -78,7 +78,7 @@ class ChromaLifecycleTest extends ChromaTest {
             .baseUrl(Property.ofValue(baseUrl))
             .collectionName(Property.ofValue(collectionName))
             .vector(Property.ofValue(List.of(0.9, 0.8, 0.7, 0.6)))
-            .nResults(Property.ofValue(10))
+            .maxResults(Property.ofValue(10))
             .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(afterCtx);

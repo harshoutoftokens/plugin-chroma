@@ -17,7 +17,7 @@ Record operations (`Upsert`, `Query`, `Delete`) address a collection by name; th
 
 - `CreateCollection`: Creates a collection in the configured tenant and database. Supports a distance metric (`L2`, `COSINE` or `IP`), optional collection metadata, and get-or-create semantics (default: `true`). Chroma infers the vector dimension from the first records added.
 - `Upsert`: Inserts or updates records (an `id`, an `embedding`, and optional `metadata` and `document`) in configurable batches. Reads records from an inline list or from a file in Kestra's internal storage (ION or JSON, via `kestra://` URIs).
-- `Query`: Runs a nearest-neighbour search with a query `vector`. Supports a metadata filter (`where`), a document filter (`whereDocument`), the number of results (`nResults`), the fields to include (`include`), and fetch output modes (`FETCH`, `FETCH_ONE`, `STORE`).
+- `Query`: Runs a nearest-neighbour search with a query `vector`. Supports a metadata filter (`where`), a document filter (`whereDocument`), the number of results (`maxResults`), the fields to include (`include`), and fetch output modes (`FETCH`, `FETCH_ONE`, `STORE`).
 - `Delete`: Deletes records by `ids` and/or by a metadata (`where`) or document (`whereDocument`) filter.
 
 ## Filters
