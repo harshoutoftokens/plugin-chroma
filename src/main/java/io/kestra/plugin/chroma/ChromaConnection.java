@@ -15,7 +15,6 @@ import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.serializers.JacksonMapper;
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -28,7 +27,9 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -71,39 +72,44 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
     @ToString.Exclude
     protected Property<String> password;
 
-    /**
-     * Opens an authenticated client bound to the configured tenant/database.
-     * Callers must close it (it is {@link Closeable}).
-     */
+    // Opens a client bound to the configured tenant/database; callers must close it.
     protected ApiClient api(RunContext runContext) throws IllegalVariableEvaluationException {
-        String rBaseUrl = runContext.render(this.baseUrl).as(String.class)
+        var rBaseUrl = runContext.render(this.baseUrl).as(String.class)
             .map(url -> url.replaceAll("/+$", ""))
             .orElseThrow(() -> new IllegalArgumentException("'baseUrl' is required"));
-        String rTenant = runContext.render(this.tenant).as(String.class).orElse(DEFAULT_TENANT);
-        String rDatabase = runContext.render(this.database).as(String.class).orElse(DEFAULT_DATABASE);
-        String rToken = runContext.render(this.authToken).as(String.class).orElse(null);
-        String rUsername = runContext.render(this.username).as(String.class).orElse(null);
-        String rPassword = runContext.render(this.password).as(String.class).orElse(null);
+        var rTenant = runContext.render(this.tenant).as(String.class).orElse(DEFAULT_TENANT);
+        var rDatabase = runContext.render(this.database).as(String.class).orElse(DEFAULT_DATABASE);
+        var rToken = runContext.render(this.authToken).as(String.class).orElse(null);
+        var rUsername = runContext.render(this.username).as(String.class).orElse(null);
+        var rPassword = runContext.render(this.password).as(String.class).orElse(null);
+
+        var hasToken = rToken != null && !rToken.isBlank();
+        var hasUsername = rUsername != null && !rUsername.isBlank();
+        var hasPassword = rPassword != null && !rPassword.isBlank();
+        if (hasUsername != hasPassword) {
+            throw new IllegalArgumentException(
+                "Basic authentication requires both 'username' and 'password', but only one was set.");
+        }
 
         String authHeaderName = null;
         String authHeaderValue = null;
-        if (rToken != null && !rToken.isBlank()) {
+        if (hasToken) {
             authHeaderName = "X-Chroma-Token";
             authHeaderValue = rToken;
-        } else if (rUsername != null && rPassword != null) {
+        } else if (hasUsername) {
             authHeaderName = "Authorization";
             authHeaderValue = "Basic " + Base64.getEncoder()
                 .encodeToString((rUsername + ":" + rPassword).getBytes(StandardCharsets.UTF_8));
         }
 
-        HttpClient httpClient = new HttpClient(
+        var httpClient = new HttpClient(
             runContext,
             HttpConfiguration.builder()
                 .allowFailed(Property.ofValue(true))
                 .build()
         );
 
-        String collectionsPath = "/api/v2/tenants/" + encode(rTenant)
+        var collectionsPath = "/api/v2/tenants/" + encode(rTenant)
             + "/databases/" + encode(rDatabase) + "/collections";
 
         return new ApiClient(httpClient, rBaseUrl, collectionsPath, authHeaderName, authHeaderValue);
@@ -113,9 +119,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    /**
-     * Thin REST client for a single tenant/database. One per task execution.
-     */
+    // Thin REST client for a single tenant/database; one per task execution.
     public static class ApiClient implements Closeable {
         private final HttpClient httpClient;
         private final String baseUrl;
@@ -135,17 +139,12 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
             return this.collectionsPath;
         }
 
-        /**
-         * Path for a record-level operation, which Chroma addresses by the collection UUID.
-         */
+        // Record-level operations are addressed by the collection UUID, not its name.
         public String recordPath(String collectionId, String operation) {
             return this.collectionsPath + "/" + collectionId + "/" + operation;
         }
 
-        /**
-         * Resolves a collection name to its UUID. Chroma's record operations
-         * (add/upsert/query/get/delete/count) are keyed by the collection id, not its name.
-         */
+        // Resolves a collection name to the UUID that record operations are keyed by.
         public String resolveCollectionId(String collectionName) throws IOException {
             JsonNode collection;
             try {
@@ -162,13 +161,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
             return collection.get("id").asText();
         }
 
-        /**
-         * Executes a request against the Chroma server and returns the parsed body (or {@code null} if empty).
-         *
-         * @param method HTTP method
-         * @param path   absolute path starting with {@code /api/v2}
-         * @param body   object serialized to JSON, or {@code null} for no body
-         */
+        // Sends the request and returns the parsed JSON body, or null if the response is empty.
         public JsonNode request(String method, String path, Object body) throws IOException {
             HttpRequest.HttpRequestBuilder builder = HttpRequest.builder()
                 .uri(URI.create(this.baseUrl + path))
@@ -181,22 +174,38 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
                 builder.body(HttpRequest.JsonRequestBody.of(body));
             }
 
-            HttpResponse<String> response;
+            // Parse the success body straight off the response stream rather than buffering it into a String first.
+            var result = new Object() {
+                int code;
+                JsonNode node;
+                String errorBody;
+            };
             try {
-                response = this.httpClient.request(builder.build(), String.class);
+                this.httpClient.request(builder.build(), (HttpResponse<InputStream> response) -> {
+                    result.code = response.getStatus().getCode();
+                    try (InputStream content = response.getBody()) {
+                        if (content == null) {
+                            return;
+                        }
+                        if (result.code < 200 || result.code >= 300) {
+                            result.errorBody = new String(content.readAllBytes(), StandardCharsets.UTF_8);
+                        } else {
+                            result.node = MAPPER.readTree(content);
+                        }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
             } catch (IllegalVariableEvaluationException | io.kestra.core.http.client.HttpClientException e) {
                 throw new IOException("Chroma request " + method + " " + path + " failed: " + e.getMessage(), e);
+            } catch (UncheckedIOException e) {
+                throw e.getCause();
             }
 
-            int code = response.getStatus().getCode();
-            String responseBody = response.getBody();
-            if (code < 200 || code >= 300) {
-                throw new ChromaApiException(method, path, code, responseBody);
+            if (result.code < 200 || result.code >= 300) {
+                throw new ChromaApiException(method, path, result.code, result.errorBody);
             }
-            if (responseBody == null || responseBody.isBlank()) {
-                return null;
-            }
-            return MAPPER.readTree(responseBody);
+            return result.node;
         }
 
         @Override
@@ -205,9 +214,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
         }
     }
 
-    /**
-     * Raised when Chroma returns a non-2xx status, carrying the code and response body for diagnostics.
-     */
+    // Raised when Chroma returns a non-2xx status, carrying the code and body for diagnostics.
     public static class ChromaApiException extends IOException {
         private final int statusCode;
 
@@ -222,10 +229,7 @@ public abstract class ChromaConnection extends Task implements ChromaConnectionI
         }
     }
 
-    /**
-     * Writes rows as a {@link FetchType}-controlled output: all rows inline, the first row only,
-     * or an ION file in Kestra storage.
-     */
+    // Emits rows per FetchType: all inline (FETCH), first only (FETCH_ONE), or an ION file (STORE).
     public static FetchOutput buildFetchOutput(RunContext runContext, FetchType fetchType, List<Map<String, Object>> rows) throws IOException {
         return buildFetchOutput(runContext, fetchType, rows, Function.identity());
     }

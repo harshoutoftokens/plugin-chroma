@@ -78,7 +78,7 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
 
     @Schema(
         title = "Number of results",
-        description = "Maximum number of nearest records to return (default: 10)."
+        description = "Maximum number of nearest records to return (default: 10, min: 1)."
     )
     @Builder.Default
     @PluginProperty(group = "processing")
@@ -125,6 +125,9 @@ public class Query extends ChromaConnection implements RunnableTask<FetchOutput>
             throw new IllegalArgumentException("'vector' must be a non-empty list of numbers.");
         }
         int rNResults = runContext.render(this.nResults).as(Integer.class).orElse(10);
+        if (rNResults < 1) {
+            throw new IllegalArgumentException("'nResults' must be at least 1, got: " + rNResults);
+        }
         FetchType rFetchType = runContext.render(this.fetchType).as(FetchType.class).orElse(FetchType.STORE);
         List<String> rInclude = this.include == null
             ? DEFAULT_INCLUDE

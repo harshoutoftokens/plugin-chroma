@@ -1,8 +1,25 @@
 group: io.kestra.plugin.chroma
 name: "chroma"
 title: "Chroma"
-description: "Chroma plugin for Kestra"
-body: ""
+description: "Manage collections and vectors in Chroma, the open-source embedding database, from your Kestra flows."
+body: |
+  Chroma is an open-source embedding (vector) database for building AI applications such as semantic search and
+  retrieval-augmented generation (RAG).
+
+  This plugin talks to a Chroma server over its v2 REST API, so it works with self-hosted Chroma and with Chroma Cloud.
+  It lets you create collections, upsert embeddings, run nearest-neighbour queries, and delete records as tasks in a flow.
+
+  Tasks:
+
+  - `CreateCollection` – create (or get-or-create) a collection, optionally setting its distance metric and metadata.
+  - `Upsert` – insert or update records (id, embedding, optional document and metadata) in batches, inline or streamed
+    from a Kestra storage file.
+  - `Query` – run a nearest-neighbour search with optional metadata and document filters, returning the matches inline,
+    first-only, or as an ION file in Kestra storage.
+  - `Delete` – delete records by id and/or by a metadata or document filter.
+
+  Authenticate with an `authToken` (sent as `X-Chroma-Token`, used by token-authenticated servers and Chroma Cloud) or
+  with HTTP basic `username`/`password`.
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"

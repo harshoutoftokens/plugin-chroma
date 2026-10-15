@@ -12,14 +12,11 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * End-to-end lifecycle: create a collection, upsert records, query them, then delete.
- */
+// End-to-end lifecycle: create a collection, upsert records, query them, then delete.
 class ChromaLifecycleTest extends ChromaTest {
 
     @Test
     void createUpsertQueryDelete() throws Exception {
-        // 1. Create the collection
         RunContext createCtx = runContextFactory.of();
         CreateCollection.Output created = CreateCollection.builder()
             .baseUrl(Property.ofValue(baseUrl))
@@ -49,7 +46,6 @@ class ChromaLifecycleTest extends ChromaTest {
 
         assertThat(upserted.getUpsertedCount(), is(3L));
 
-        // 3. Query, filtered on metadata, returning rows inline
         RunContext queryCtx = runContextFactory.of();
         FetchOutput queried = Query.builder()
             .baseUrl(Property.ofValue(baseUrl))
@@ -69,7 +65,6 @@ class ChromaLifecycleTest extends ChromaTest {
         assertThat(top, hasKey("document"));
         assertThat(top, hasKey("metadata"));
 
-        // 4. Delete by id
         RunContext deleteCtx = runContextFactory.of();
         Delete.Output deleted = Delete.builder()
             .baseUrl(Property.ofValue(baseUrl))
@@ -78,10 +73,8 @@ class ChromaLifecycleTest extends ChromaTest {
             .build()
             .run(deleteCtx);
 
-        assertThat(deleted.getSuccess(), is(true));
-        assertThat(deleted.getDeletedCount(), is(2L));
+        assertThat(deleted.getRequestedIdCount(), is(2L));
 
-        // 5. Confirm only doc-3 remains
         RunContext afterCtx = runContextFactory.of();
         FetchOutput after = Query.builder()
             .baseUrl(Property.ofValue(baseUrl))

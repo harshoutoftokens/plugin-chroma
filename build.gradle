@@ -89,8 +89,9 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library"
 
     // testcontainers (spin up a real Chroma server for integration tests)
-    testImplementation "org.testcontainers:testcontainers:1.20.4"
-    testImplementation "org.testcontainers:junit-jupiter:1.20.4"
+    testImplementation platform("org.testcontainers:testcontainers-bom:1.21.4")
+    testImplementation "org.testcontainers:testcontainers"
+    testImplementation "org.testcontainers:junit-jupiter"
 }
 
 /**********************************************************************************************************************\

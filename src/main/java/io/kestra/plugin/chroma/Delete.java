@@ -131,8 +131,7 @@ public class Delete extends ChromaConnection implements RunnableTask<Delete.Outp
             api.request("POST", api.recordPath(collectionId, "delete"), body);
 
             return Output.builder()
-                .deletedCount(hasIds ? (long) rIds.size() : null)
-                .success(true)
+                .requestedIdCount(hasIds ? (long) rIds.size() : null)
                 .build();
         }
     }
@@ -141,15 +140,10 @@ public class Delete extends ChromaConnection implements RunnableTask<Delete.Outp
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "Deleted count",
-            description = "The number of ids targeted for deletion (only available when deleting by `ids`)."
+            title = "Requested id count",
+            description = "The number of ids sent for deletion when deleting by `ids`, or null when deleting by filter. "
+                + "Chroma does not report how many records actually matched, and the task fails if the request is rejected."
         )
-        private final Long deletedCount;
-
-        @Schema(
-            title = "Success",
-            description = "Whether the delete request was accepted by Chroma."
-        )
-        private final Boolean success;
+        private final Long requestedIdCount;
     }
 }

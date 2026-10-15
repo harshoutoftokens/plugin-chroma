@@ -46,6 +46,24 @@ import java.util.Map;
                     collectionName: docs
                     distance: COSINE
                 """
+        ),
+        @Example(
+            title = "Create a collection on Chroma Cloud using a token stored as a secret",
+            full = true,
+            code = """
+                id: chroma_cloud_create_collection
+                namespace: company.team
+
+                tasks:
+                  - id: create_collection
+                    type: io.kestra.plugin.chroma.CreateCollection
+                    baseUrl: https://api.trychroma.com
+                    tenant: "{{ secret('CHROMA_TENANT') }}"
+                    database: "{{ secret('CHROMA_DATABASE') }}"
+                    authToken: "{{ secret('CHROMA_TOKEN') }}"
+                    collectionName: docs
+                    distance: COSINE
+                """
         )
     }
 )
